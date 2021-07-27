@@ -1,0 +1,11 @@
+preprocess data:
+input must be zstd jsonl, line format {"text": "content", meta: {}}
+venv/bin/python tools/preprocess_data.py --input ~data/archives/logs/hellomouse-logs.jsonl.zst --output-prefix data/hellomouse-logs --vocab data/gpt2-vocab.json --dataset-impl mmap --tokenizer-type GPT2BPETokenizer --merge-file data/gpt2-merges.txt --append-eod
+
+training:
+venv/bin/python deepy.py pretrain_gpt2.py -d configs extra-small.yml hellomouse-local.yml
+
+other crap:
+- cuda does not like gcc-10, use gcc-9 instead (link gcc-9 as gcc into /usr/local/bin/cuda)
+- the minor version check probably needs to be removed, see https://github.com/NVIDIA/apex/pull/323
+
