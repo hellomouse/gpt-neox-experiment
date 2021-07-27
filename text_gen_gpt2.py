@@ -59,6 +59,7 @@ if __name__ == "__main__":
         generate_samples_interactive(
             neox_args=neox_args, 
             model=model,
+            maximum_tokens = neox_args.maximum_tokens,
             recompute = neox_args.recompute, 
             temperature = neox_args.temperature,
             top_k = neox_args.top_k, 
