@@ -52,7 +52,8 @@ if __name__ == "__main__":
             recompute = neox_args.recompute, 
             temperature = neox_args.temperature,
             top_k = neox_args.top_k, 
-            top_p = neox_args.top_p
+            top_p = neox_args.top_p,
+            single_prompt = True
         )
 
     elif neox_args.text_gen_type == 'interactive':

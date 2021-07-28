@@ -444,7 +444,7 @@ def generate_samples_from_prompt(neox_args, model, text: Union[List[str], str], 
     return generated_texts
 
 def generate_samples_input_from_file(neox_args, model, input_file, output_file=None, eos_token_id: int = None, 
-                                        maximum_tokens: int = 64, recompute: bool = False, temperature: float = 0.0, top_k: int = 0, top_p: float = 0.0):
+        maximum_tokens: int = 64, recompute: bool = False, temperature: float = 0.0, top_k: int = 0, top_p: float = 0.0, single_prompt: bool = False):
     """
     Generates samples from an input file and writes them to an output file.
 
@@ -479,7 +479,10 @@ def generate_samples_input_from_file(neox_args, model, input_file, output_file=N
     # Read the sample file
     print_rank_0('generate_samples_input_from_file() loading input from {}'.format(input_file))
     with open(input_file, "r") as f:
-        prompts = f.readlines()
+        if not single_prompt:
+            prompts = f.readlines()
+        else:
+            prompts = [f.read()]
     prompts = [p.strip() for p in prompts]
     prompts = [p for p in prompts if len(p) > 0]
     print_rank_0('generate_samples_input_from_file() prompts loaded: {}'.format(len(prompts)))
