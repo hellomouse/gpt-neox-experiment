@@ -7,11 +7,11 @@ note: venv must be active!
 python prepare_data.py pile_subset
 
 training:
-nice venv/bin/python deepy.py pretrain_gpt2.py -d configs extra-small.yml hellomouse-pile-mixed-local.yml
+nice venv/bin/python deepy.py pretrain_gpt2.py -d configs extra-small-opt.yml hellomouse-pile-mixed-local.yml
 
 generation:
 note: netns-run.sh is needed if training is currently happening, or port bind error
-venv/bin/python deepy.py text_gen_gpt2.py -d configs extra-small.yml hellomouse-pile-mixed-local.yml text_generation_input.yml
+venv/bin/python deepy.py text_gen_gpt2.py -d configs extra-small-opt-inference.yml hellomouse-pile-mixed-local.yml text_generation_input.yml
 
 other crap:
 - cuda does not like gcc-10, use gcc-9 instead (link gcc-9 as gcc into /usr/local/bin/cuda)
