@@ -615,6 +615,9 @@ def generate_samples_interactive(neox_args, model, maximum_tokens: int = 64, eos
         terminate_runs = broadcast_terminate_signal(terminate_runs)
         if terminate_runs == 1:
             return
+
+        print_rank_0('Generated text: ', end='')
+        last_index = -1
         for batch_context_tokens, batch_token_generation_start_index, batch_token_generation_end_index, batch_logits, is_done in stream_tokens(
             neox_args=neox_args, 
             model=model,
@@ -626,12 +629,19 @@ def generate_samples_interactive(neox_args, model, maximum_tokens: int = 64, eos
             top_k=top_k,
             top_p=top_p
             ):
-             if mpu.get_model_parallel_rank() == 0:
-                generated_tokens = batch_context_tokens[0].cpu().numpy().tolist()[batch_token_generation_start_index[0].item():batch_token_generation_end_index[0].item()]
+            if mpu.get_model_parallel_rank() == 0:
+                if last_index == -1:
+                    last_index = batch_token_generation_start_index[0].item()
+                end_index = batch_token_generation_end_index[0].item()
+                generated_tokens = batch_context_tokens[0].cpu().numpy().tolist()[last_index:end_index]
                 generated_text = neox_args.tokenizer.detokenize(generated_tokens)
+                if generated_text.endswith('\ufffd') and not is_done:
+                    # stupid workaround to prevent unicode getting split wrongly
+                    continue
+                print_rank_0(generated_text, end='')
+                last_index = end_index
         
-        print_rank_0("Generated Text: "+generated_text)
-        if torch.distributed.is_initialized() and  torch.distributed.get_rank() == 0:
+        if torch.distributed.is_initialized() and torch.distributed.get_rank() == 0:
             _ = input("\n<press enter to continue>")
 
 
