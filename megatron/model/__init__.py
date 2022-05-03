@@ -1,4 +1,3 @@
-# coding=utf-8
 #
 # Copyright 2021 Biderman et al. This file is based on code by the authors denoted below and has been modified from its original version.
 #
@@ -18,3 +17,4 @@
 
 from .gpt2_model import GPT2ModelPipe
 from .utils import get_params_for_weight_decay_optimization
+from .word_embeddings import SoftEmbedding

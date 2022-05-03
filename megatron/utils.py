@@ -1,5 +1,3 @@
-# coding=utf-8
-
 # Copyright (c) 2021 Josh Levy-Kramer <josh@levykramer.co.uk>.
 # This file is based on code by the authors denoted below and has been modified from its original version.
 #
@@ -38,10 +36,10 @@ from megatron import mpu
 from deepspeed import PipelineEngine, DeepSpeedEngine
 from collections import deque
 
+
 def reduce_losses(losses):
     """Reduce a tensor of losses across all GPUs."""
-    reduced_losses = torch.cat(
-        [loss.clone().detach().view(1) for loss in losses])
+    reduced_losses = torch.cat([loss.clone().detach().view(1) for loss in losses])
     torch.distributed.all_reduce(reduced_losses)
     reduced_losses = reduced_losses / torch.distributed.get_world_size()
     return reduced_losses
@@ -50,35 +48,46 @@ def reduce_losses(losses):
 def report_memory(name):
     """Simple GPU memory report."""
     mega_bytes = 1024.0 * 1024.0
-    string = name + ' memory (MB)'
-    string += ' | allocated: {}'.format(
-        torch.cuda.memory_allocated() / mega_bytes)
-    string += ' | max allocated: {}'.format(
-        torch.cuda.max_memory_allocated() / mega_bytes)
-    string += ' | reserved: {}'.format(torch.cuda.memory_reserved() / mega_bytes)
-    string += ' | max reserved: {}'.format(
-        torch.cuda.max_memory_reserved() / mega_bytes)
+    string = name + " memory (MB)"
+    string += " | allocated: {}".format(torch.cuda.memory_allocated() / mega_bytes)
+    string += " | max allocated: {}".format(
+        torch.cuda.max_memory_allocated() / mega_bytes
+    )
+    string += " | reserved: {}".format(torch.cuda.memory_reserved() / mega_bytes)
+    string += " | max reserved: {}".format(
+        torch.cuda.max_memory_reserved() / mega_bytes
+    )
     print_rank_0(string)
 
 
-def get_ltor_masks_and_position_ids(data,
-                                    eod_token,
-                                    reset_position_ids,
-                                    reset_attention_mask,
-                                    eod_mask_loss):
+def get_attn_mask(seq_length, device):
+    """
+    Get triangular attention mask for a given sequence length / device.
+    """
+    # lower triangular attention mask
+    mask = torch.tril(torch.ones((1, seq_length, seq_length), device=device)).view(
+        1, 1, seq_length, seq_length
+    )
+
+    # convert to binary
+    return mask < 0.5
+
+
+def get_ltor_masks_and_position_ids(
+    data,
+    eod_token,
+    eod_mask_loss=False,
+):
     """Build masks and position id for left to right model."""
 
     # Extract batch size and sequence length.
     batch_size, seq_length = data.size()
 
     # Attention mask (lower triangular).
-    if reset_attention_mask:
-        att_mask_batch = batch_size
-    else:
-        att_mask_batch = 1
-    attention_mask = torch.tril(torch.ones(
-        (att_mask_batch, seq_length, seq_length), device=data.device)).view(
-        att_mask_batch, 1, seq_length, seq_length)
+    attention_mask = get_attn_mask(
+        seq_length=seq_length,
+        device=data.device,
+    )
 
     # Loss mask.
     loss_mask = torch.ones(data.size(), dtype=torch.float, device=data.device)
@@ -86,52 +95,31 @@ def get_ltor_masks_and_position_ids(data,
         loss_mask[data == eod_token] = 0.0
 
     # Position ids.
-    position_ids = torch.arange(seq_length, dtype=torch.long,
-                                device=data.device)
+    position_ids = torch.arange(seq_length, dtype=torch.long, device=data.device)
     position_ids = position_ids.unsqueeze(0).expand_as(data)
-    # We need to clone as the ids will be modifed based on batch index.
-    if reset_position_ids:
-        position_ids = position_ids.clone()
-
-    if reset_position_ids or reset_attention_mask:
-        # Loop through the batches:
-        for b in range(batch_size):
-
-            # Find indecies where EOD token is.
-            eod_index = position_ids[b, data[b] == eod_token]
-            # Detach indecies from positions if going to modify positions.
-            if reset_position_ids:
-                eod_index = eod_index.clone()
-
-            # Loop through EOD indecies:
-            prev_index = 0
-            for j in range(eod_index.size()[0]):
-                i = eod_index[j]
-                # Mask attention loss.
-                if reset_attention_mask:
-                    attention_mask[b, 0, (i + 1):, :(i + 1)] = 0
-                # Reset positions.
-                if reset_position_ids:
-                    position_ids[b, (i + 1):] -= (i + 1 - prev_index)
-                    prev_index = i + 1
-
-    # Convert attention mask to binary:
-    attention_mask = (attention_mask < 0.5)
 
     return attention_mask, loss_mask, position_ids
 
 
 def local_rank():
-    """ Local rank of process """
+    """Local rank of process"""
     local_rank = os.environ.get("LOCAL_RANK")
     if local_rank is None:
-        print("utils.local_rank() environment variable LOCAL_RANK not set, defaulting to 0", flush=True)
+        print(
+            "utils.local_rank() environment variable LOCAL_RANK not set, defaulting to 0",
+            flush=True,
+        )
         local_rank = 0
     return int(local_rank)
 
 
+def is_bnb_available():
+    """True if bitsandbytes optimizers are available"""
+    return importlib.util.find_spec("bitsandbytes") is not None
+
+
 def is_local_main():
-    """ True if is the local main process """
+    """True if is the local main process"""
     return local_rank() == 0
 
 
@@ -141,11 +129,11 @@ def is_mp_rank_0():
 
 
 def get_wandb_api_key(neox_args):
-    """ Get Weights and Biases API key from ENV or .netrc file. Otherwise return None """
-    if 'WANDB_LOCAL' in os.environ:
-        return 'LOCAL'
-    if 'WANDB_API_KEY' in os.environ:
-        return os.environ['WANDB_API_KEY']
+    """Get Weights and Biases API key from ENV or .netrc file. Otherwise return None"""
+    if "WANDB_LOCAL" in os.environ:
+        return "LOCAL"
+    if "WANDB_API_KEY" in os.environ:
+        return os.environ["WANDB_API_KEY"]
 
     wandb_token = requests.utils.get_netrc_auth(neox_args.wandb_host)
 
@@ -158,22 +146,36 @@ def init_wandb(neox_args):
     if neox_args.use_wandb == False:
         return
 
-    use_wandb = is_local_main() and (get_wandb_api_key(neox_args=neox_args) is not None)
-    neox_args.update_value("use_wandb", use_wandb)
+    if not neox_args.wandb_init_all_ranks:
+        use_wandb = is_local_main() and (
+            get_wandb_api_key(neox_args=neox_args) is not None
+        )
+        neox_args.update_value("use_wandb", use_wandb)
     if neox_args.use_wandb:
         group_name = neox_args.wandb_group
-        name = f'{socket.gethostname()}-{local_rank()}' if group_name else None
+        name = f"{socket.gethostname()}-{local_rank()}" if group_name else None
         try:
-            wandb.init(project=neox_args.wandb_project, group=group_name, name=name, save_code=False,
-                       force=False, entity=neox_args.wandb_team)
+            wandb.init(
+                project=neox_args.wandb_project,
+                group=group_name,
+                name=name,
+                save_code=False,
+                force=False,
+                entity=neox_args.wandb_team,
+            )
         except UsageError as e:
             neox_args.update_value("use_wandb", False)
             print(e)
-            print('Skipping wandb. Execute `wandb login` on local or main node machine to enable.', flush=True)
+            print(
+                "Skipping wandb. Execute `wandb login` on local or main node machine to enable.",
+                flush=True,
+            )
         wandb.config.update(neox_args.all_config)
 
 
-def obtain_resource_pool(hostfile_path, include_arg, exclude_arg) -> Dict[str, List[int]]:
+def obtain_resource_pool(
+    hostfile_path, include_arg, exclude_arg
+) -> Dict[str, List[int]]:
     """
     Get dict of `resource_pool[hostname] = [list of GPU ranks]` using hostfile, include and exclude args.
     Modified from: `deepspeed.launcher.runner.main`
@@ -184,17 +186,17 @@ def obtain_resource_pool(hostfile_path, include_arg, exclude_arg) -> Dict[str, L
         device_count = torch.cuda.device_count()
         if device_count == 0:
             raise RuntimeError("Unable to proceed, no GPU resources available")
-        resource_pool['localhost'] = device_count
+        resource_pool["localhost"] = device_count
 
-    active_resources = parse_inclusion_exclusion(resource_pool,
-                                                 include_arg,
-                                                 exclude_arg)
+    active_resources = parse_inclusion_exclusion(
+        resource_pool, include_arg, exclude_arg
+    )
     return active_resources
 
 
 def natural_sort(l):
     convert = lambda text: int(text) if text.isdigit() else text.lower()
-    alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
+    alphanum_key = lambda key: [convert(c) for c in re.split("([0-9]+)", key)]
     return sorted(l, key=alphanum_key)
 
 
@@ -206,6 +208,7 @@ def ddb(rank=0):
     """
     if torch.distributed.get_rank() == rank:
         from pdb import Pdb
+
         pdb = Pdb(skip=["torch.distributed.*"])
         pdb.set_trace(sys._getframe().f_back)
     torch.distributed.barrier()
@@ -222,16 +225,16 @@ class Timer:
 
     def start(self):
         """Start the timer."""
-        assert not self.started_, 'timer has already been started'
+        assert not self.started_, "timer has already been started"
         torch.cuda.synchronize()
         self.start_time = time.time()
         self.started_ = True
 
     def stop(self):
         """Stop the timer."""
-        assert self.started_, 'timer is not started'
+        assert self.started_, "timer is not started"
         torch.cuda.synchronize()
-        self.elapsed_ += (time.time() - self.start_time)
+        self.elapsed_ += time.time() - self.start_time
         self.started_ = False
 
     def reset(self):
@@ -273,7 +276,7 @@ class Timers:
         """Write timers to a tensorboard writer"""
         # currently when using add_scalars,
         # torch.utils.add_scalars makes each timer its own run, which
-        # polutes the runs list, so we just add each as a scalar
+        # pollutes the runs list, so we just add each as a scalar
         assert normalizer > 0.0
         for name in names:
             value = self.timers[name].elapsed(reset=reset) / normalizer
@@ -287,11 +290,10 @@ class Timers:
     def log(self, names, normalizer=1.0, reset=True):
         """Log a group of timers."""
         assert normalizer > 0.0
-        string = 'time (ms)'
+        string = "time (ms)"
         for name in names:
-            elapsed_time = self.timers[name].elapsed(
-                reset=reset) * 1000.0 / normalizer
-            string += ' | {}: {:.2f}'.format(name, elapsed_time)
+            elapsed_time = self.timers[name].elapsed(reset=reset) * 1000.0 / normalizer
+            string += " | {}: {:.2f}".format(name, elapsed_time)
         if torch.distributed.is_initialized():
             if torch.distributed.get_rank() == 0:
                 print(string, flush=True)
@@ -319,17 +321,20 @@ def expand_attention_types(attention_config, num_layers):
     for item in attention_config:
         # instead of specifying a number - we can specify 'all' to extend this pattern across all layers
         if item[1] == "all":
-            assert num_layers % len(item[0]) == 0, f"Number of layers ({num_layers}) is not divisible by the length " \
-                                                   f"of pattern: {item[0]}"
+            assert num_layers % len(item[0]) == 0, (
+                f"Number of layers ({num_layers}) is not divisible by the length "
+                f"of pattern: {item[0]}"
+            )
             return item[0] * (num_layers // len(item[0]))
         for _ in range(item[1]):
             newlist.extend(item[0])
     return newlist
 
+
 class OverflowMonitor:
 
     """
-    Checks if the past n iterations have been skipped due to overflow, and exits 
+    Checks if the past n iterations have been skipped due to overflow, and exits
     training if that happens.
     """
 
@@ -340,32 +345,46 @@ class OverflowMonitor:
 
     def check(self, skipped):
         self.history.append(skipped)
-        if self.optimizer.overflow and len(self.history) == self.n and all(self.history):
-            raise Exception(f'Skipped {self.n} iterations in a row due to Overflow - Exiting training.')
+        if (
+            self.optimizer.overflow
+            and len(self.history) == self.n
+            and all(self.history)
+        ):
+            raise Exception(
+                f"Skipped {self.n} iterations in a row due to Overflow - Exiting training."
+            )
 
 
 def get_noise_scale_logger(neox_args):
     if neox_args.log_gradient_noise_scale:
         if neox_args.zero_stage >= 1:
-            raise NotImplementedError('Gradient Noise Scale logging does not work with zero stage 2+, as the '
-                                      'gradients are distributed across ranks.')
+            raise NotImplementedError(
+                "Gradient Noise Scale logging does not work with zero stage 2+, as the "
+                "gradients are distributed across ranks."
+            )
         noise_scale_logger = GradientNoiseScale(
             model=model,
             batch_size_small=neox_args.train_batch_size,
             n_batches=neox_args.gradient_noise_scale_n_batches,
             cpu_offload=neox_args.gradient_noise_scale_cpu_offload,
             neox_args=neox_args,
-            mpu=mpu)
+            mpu=mpu,
+        )
     else:
         noise_scale_logger = None
     return noise_scale_logger
+
 
 def get_total_params(model):
     # Print number of parameters.
     if mpu.get_data_parallel_rank() == 0:
         params = sum([p.nelement() for p in model.parameters()])
-        print(' > number of parameters on model parallel rank {}: {}'.format(
-            mpu.get_model_parallel_rank(), params), flush=True)
+        print(
+            " > number of parameters on model parallel rank {}: {}".format(
+                mpu.get_model_parallel_rank(), params
+            ),
+            flush=True,
+        )
     else:
         params = 0
 
@@ -374,7 +393,19 @@ def get_total_params(model):
     total_n_parameters = total_n_parameters.item()
     return total_n_parameters
 
-def setup_for_inference_or_eval(inference=True, get_key_value=True, overwrite_values=None):
+
+def setup_for_inference_or_eval(
+    use_cache=True,
+    overwrite_values=None,
+):
+    """
+    Initializes the model for evaluation or inference (doesn't load optimizer states, etc.) from command line args.
+
+    use_cache: bool
+        Whether to use key value caching in inference.
+    overwrite_values: dict
+        Optional Values to overwrite in the model config.
+    """
 
     from megatron.neox_arguments import NeoXArgs
     from megatron.initialize import initialize_megatron
@@ -384,13 +415,14 @@ def setup_for_inference_or_eval(inference=True, get_key_value=True, overwrite_va
         "checkpoint_activations": False,
         "partition_activations": False,
         "no_load_optim": True,
+        "zero_optimization": None,  # disable zero optimization (won't be used in inference, and loading zero optimizer can cause errors)
     }
     if overwrite_values:
         _overwrite_values.update(overwrite_values)
     neox_args = NeoXArgs.consume_neox_args(overwrite_values=_overwrite_values)
     neox_args.configure_distributed_args()
     neox_args.build_tokenizer()
-    
+
     if neox_args.load is None:
         raise ValueError("`load` parameter must be supplied to load a model`")
 
@@ -398,6 +430,43 @@ def setup_for_inference_or_eval(inference=True, get_key_value=True, overwrite_va
     initialize_megatron(neox_args)
 
     # set up model and load checkpoint.
-    model, _, _ = setup_model_and_optimizer(neox_args=neox_args, inference=inference, get_key_value=get_key_value) # we use setup_model_and_optimizer instead of get_model in order to initialize deepspeed
-    print_rank_0('Finished loading model')
+    model, _, _ = setup_model_and_optimizer(
+        neox_args=neox_args,
+        use_cache=use_cache,
+        iteration=neox_args.iteration,
+    )  # we use setup_model_and_optimizer instead of get_model in order to initialize deepspeed
+    print_rank_0("Finished loading model")
+
+    model.module.inference_mode(use_cache=use_cache)
     return model, neox_args
+
+
+class CharCounter:
+    """
+    Wraps the data_iterator to count the number of characters in a batch
+    """
+
+    def __init__(self, data_iterator, tokenizer):
+        self.tokenizer = tokenizer
+        self.data_iterator = data_iterator
+        self.char_count = 0
+        self.batch_count = 0
+        self.token_count = 0
+        self.total_time = 0
+
+    def tokens_per_char(self):
+        return self.token_count / self.char_count
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        start = time.time()
+        batch = self.data_iterator.__next__()
+        for b in batch["text"]:
+            self.token_count += len(b)
+            self.char_count += len(self.tokenizer.detokenize(b.tolist()))
+        self.batch_count += 1
+        end = time.time()
+        self.total_time += end - start
+        return batch

@@ -131,7 +131,7 @@ dmypy.json
 # wandb logs
 wandb/
 
-# data files 
+# data files
 data/**/*.idx
 data/**/*.bin
 data/**/*.json*
@@ -152,4 +152,4 @@ logs/
 tensorboard/
 src/
 /sample_input.txt
-/sample_output.txt
+sample_output.txt

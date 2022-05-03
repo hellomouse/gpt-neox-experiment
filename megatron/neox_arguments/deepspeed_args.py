@@ -1,17 +1,22 @@
 from dataclasses import dataclass
-from .template import NeoXArgsTemplate
+
+try:
+    from .template import NeoXArgsTemplate
+except ImportError:
+    from template import NeoXArgsTemplate
+
 
 @dataclass
 class NeoXArgsDeepspeedConfig(NeoXArgsTemplate):
     """
-    args for deepspeed config
+    Args for deepspeed config
     Every argument included here will be included in deepspeed config json
     #TODO this list is not complete as compared to https://www.deepspeed.ai/docs/config-json/
-    """ 
+    """
 
     deepspeed: bool = True
     """boolean flag to enable DeepSpeed (Always True)"""
-    
+
     train_batch_size: int = None
     """
     The effective training batch size. This is the amount of data samples that leads to one step of model update. train_batch_size is aggregated by the batch size that a single GPU processes in one forward/backward pass (a.k.a., train_step_batch_size), the gradient accumulation steps (a.k.a., gradient_accumulation_steps), and the number of GPUs.
@@ -41,7 +46,7 @@ class NeoXArgsDeepspeedConfig(NeoXArgsTemplate):
     dict containing the keys type and params
 
     type: The scheduler name. See here (https://deepspeed.readthedocs.io/en/latest/schedulers.html) for list of support schedulers.
-    
+
     params: Dictionary of parameters to instantiate scheduler. The parameter names should match scheduler constructor signature.
     """
 
@@ -67,7 +72,7 @@ class NeoXArgsDeepspeedConfig(NeoXArgsTemplate):
 
     fp16: dict = None
     """
-    Configuration for using mixed precision/FP16 training that leverages NVIDIA’s Apex package. 
+    Configuration for using mixed precision/FP16 training that leverages NVIDIA’s Apex package.
     """
 
     amp: dict = None
@@ -108,17 +113,18 @@ class NeoXArgsDeepspeedConfig(NeoXArgsTemplate):
     Whether Deepspeed Zero Optimizer will allow an optimizer that hasn't been tested by the deepspeed team
     """
 
+
 @dataclass
-class NeoXArgsDeepspeedRunner(NeoXArgsTemplate):   
+class NeoXArgsDeepspeedRunner(NeoXArgsTemplate):
     """
-    args for deepspeed runner (deepspeed.launcher.runner). 
+    Args for deepspeed runner (deepspeed.launcher.runner).
     Every argument included here will be passed as command line argument to deepspeed.launcher.runner
-    """ 
-    
+    """
+
     hostfile: str = None
     """
     list of hostnames / ssh aliases and the number of GPUs per host
-    
+
     example file contents:
     worker-1 slots=4
     worker-2 slots=4
@@ -165,4 +171,3 @@ class NeoXArgsDeepspeedRunner(NeoXArgsTemplate):
     """
     If true, autodetects nvlink pairs and remaps cuda visible devices to place them next to each other. This is an Eleuther addition to deepspeed, and should speed up model parallel training on setups with nvlink pairs when mp=2.
     """
-    
